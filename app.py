@@ -741,11 +741,20 @@ app.include_router(setup_font_routes())
 
 # MCP (Model Context Protocol)
 from src.mcp_manager import McpManager
+# MCP Outbound Server
+try:
+    from src.mcp_server import run_stdio, run_http
+    MCP_OUTBOUND_AVAILABLE = True
+except ImportError:
+    MCP_OUTBOUND_AVAILABLE = False
 from src.agent_tools import set_mcp_manager
 from routes.mcp_routes import setup_mcp_routes
 
 mcp_manager = McpManager()
 set_mcp_manager(mcp_manager)
+
+# MCP Outbound Server task reference
+mcp_outbound_task = None
 app.include_router(setup_mcp_routes(mcp_manager))
 logger.info("MCP routes initialized")
 
@@ -965,6 +974,45 @@ async def _startup_event():
 
     _startup_tasks.append(asyncio.create_task(_startup_mcp_connections()))
 
+    # Start MCP Outbound Server (Odysseus as MCP server)
+    async def _startup_mcp_outbound():
+        global mcp_outbound_task
+        if MCP_OUTBOUND_AVAILABLE:
+            from src.config import config
+            if config.mcp_outbound_enabled:
+                transport = config.mcp_outbound_transport
+                bundles = config.mcp_outbound_bundles.split(',')
+                token = config.mcp_outbound_token
+
+                logger.info(f"Starting MCP outbound server: transport={transport}, bundles={bundles}")
+
+                try:
+                    if transport == "http":
+                        host = config.mcp_outbound_host
+                        port = config.mcp_outbound_port
+                        mcp_outbound_task = asyncio.create_task(
+                            run_http(
+                                enabled_bundles=[b.strip() for b in bundles if b.strip()],
+                                host=host,
+                                port=port,
+                                app_dispatcher=mcp_manager.call_tool,
+                            )
+                        )
+                    else:
+                        mcp_outbound_task = asyncio.create_task(
+                            run_stdio(
+                                enabled_bundles=[b.strip() for b in bundles if b.strip()],
+                                token_id=token,
+                                app_dispatcher=mcp_manager.call_tool,
+                            )
+                        )
+                    logger.info("MCP outbound server task started")
+                except Exception as e:
+                    logger.error(f"MCP outbound server failed to start: {e}")
+                    raise
+
+    _startup_tasks.append(asyncio.create_task(_startup_mcp_outbound()))
+
     # Pre-warm the RAG tool index off the request path. Loading the local
     # embedding model + opening ChromaDB + indexing the built-in tools is a
     # one-time ~1-3s cost that otherwise lands on the user's FIRST message
@@ -1176,6 +1224,17 @@ async def _shutdown_event():
         await mcp_manager.disconnect_all()
     except Exception as e:
         logger.warning(f"MCP shutdown error: {e}")
+
+    # Shutdown MCP Outbound Server
+    global mcp_outbound_task
+    if mcp_outbound_task:
+        mcp_outbound_task.cancel()
+        try:
+            await mcp_outbound_task
+        except asyncio.CancelledError:
+            pass
+        logger.info("MCP outbound server stopped")
+
     logger.info("Application shutdown complete")
 
 

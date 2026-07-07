@@ -1,0 +1,13 @@
+name: Block Draft PR Merges
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+jobs:
+  block-draft:
+    if: github.event.pull_request.draft == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Block draft
+        run: |
+          echo "Draft PRs cannot be merged. Mark as ready for review when complete."
+          exit 1

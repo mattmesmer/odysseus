@@ -132,6 +132,14 @@ class AppConfig(BaseSettings):
     debug: bool = Field(default=False, description="Enable debug mode")
     log_level: str = Field(default="INFO", description="Logging level")
     
+    # MCP Outbound Server settings
+    mcp_outbound_enabled: bool = Field(default=False, description="Enable MCP outbound server", validation_alias="ODY_MCP_OUTBOUND_ENABLED")
+    mcp_outbound_transport: str = Field(default="stdio", description="MCP outbound transport (stdio or http)", validation_alias="ODY_MCP_OUTBOUND_TRANSPORT")
+    mcp_outbound_bundles: str = Field(default="builtin", description="Comma-separated bundle names", validation_alias="ODY_MCP_OUTBOUND_BUNDLES")
+    mcp_outbound_token: str = Field(default="", description="MCP outbound auth token", validation_alias="ODY_MCP_OUTBOUND_TOKEN")
+    mcp_outbound_host: str = Field(default="0.0.0.0", description="MCP outbound HTTP host", validation_alias="ODY_MCP_OUTBOUND_HOST")
+    mcp_outbound_port: int = Field(default=7000, description="MCP outbound HTTP port", validation_alias="ODY_MCP_OUTBOUND_PORT")
+    
     @field_validator("data", mode="before")
     def set_data_paths(cls, v, info):
         """Set data paths relative to base_dir."""
